@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useReservasStore } from '@store/reservasStore';
-import socketService from '@services/socket';
+import { useSocket } from '@hooks/useSocket';
+
 import {
   FiCalendar, FiPhone, FiUsers, FiClock, FiCheck, FiX,
   FiMessageSquare, FiSend, FiWifi, FiWifiOff,
@@ -20,6 +21,8 @@ const ESTADOS = [
 ];
 
 const getEstadoInfo = (estado) => ESTADOS.find(e => e.value === estado) || ESTADOS[0];
+
+const { socket, isConnected } = useSocket();
 
 export default function CajaReservas() {
   const {
@@ -65,47 +68,51 @@ export default function CajaReservas() {
 
   // Escuchar eventos de WhatsApp por Socket
   useEffect(() => {
-    const handleQR = (data) => {
-      console.log('📱 QR WhatsApp recibido');
-      setWhatsappQR(data.qr);
-      setQrLoading(false);
-    };
+  if (!socket || !isConnected) return;
 
-    const handleStatus = (data) => {
-      console.log('📱 Estado WhatsApp:', data);
-      setWhatsappStatus(data);
-      if (data.estado === 'conectado') {
-        setShowQRModal(false);
-        toast.success('WhatsApp conectado exitosamente', { icon: '📱', duration: 4000 });
-      }
-    };
+  const handleQR = (data) => {
+    console.log('📱 QR WhatsApp recibido');
+    setWhatsappQR(data.qr);
+    setQrLoading(false);
+  };
 
-    socketService.on('whatsapp:qr', handleQR);
-    socketService.on('whatsapp:status', handleStatus);
+  const handleStatus = (data) => {
+    console.log('📱 Estado WhatsApp:', data);
+    setWhatsappStatus(data);
 
-    // Escuchar eventos de reservas en tiempo real
-    socketService.on('reserva:created', () => {
-      fetchReservasHoy();
-    });
-    socketService.on('reserva:updated', () => {
-      fetchReservasHoy();
-    });
-    socketService.on('reserva:estado_changed', () => {
-      fetchReservasHoy();
-    });
-    socketService.on('reserva:estados_actualizados', () => {
-      fetchReservasHoy();
-    });
+    if (data.estado === 'conectado') {
+      setShowQRModal(false);
+      toast.success('WhatsApp conectado exitosamente', {
+        icon: '📱',
+        duration: 4000
+      });
+    }
+  };
 
-    return () => {
-      socketService.off('whatsapp:qr');
-      socketService.off('whatsapp:status');
-      socketService.off('reserva:created');
-      socketService.off('reserva:updated');
-      socketService.off('reserva:estado_changed');
-      socketService.off('reserva:estados_actualizados');
-    };
-  }, []);
+  const handleRefresh = () => {
+    fetchReservasHoy();
+  };
+
+  // ✅ listeners
+  socket.on('whatsapp:qr', handleQR);
+  socket.on('whatsapp:status', handleStatus);
+
+  socket.on('reserva:created', handleRefresh);
+  socket.on('reserva:updated', handleRefresh);
+  socket.on('reserva:estado_changed', handleRefresh);
+  socket.on('reserva:estados_actualizados', handleRefresh);
+
+  return () => {
+    // ✅ cleanup correcto
+    socket.off('whatsapp:qr', handleQR);
+    socket.off('whatsapp:status', handleStatus);
+
+    socket.off('reserva:created', handleRefresh);
+    socket.off('reserva:updated', handleRefresh);
+    socket.off('reserva:estado_changed', handleRefresh);
+    socket.off('reserva:estados_actualizados', handleRefresh);
+  };
+}, [socket, isConnected]);
 
   // Polling de estado WhatsApp - deshabilitado, se usa botón manual
   // El usuario confirma manualmente con el botón 'Ya escaneé el QR'

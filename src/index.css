@@ -1,0 +1,315 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset y estilos base */
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-beige-100 text-cafe-900 font-sans;
+    touch-action: manipulation;
+  }
+
+  /* Eliminar zoom en inputs en iOS */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Scrollbar personalizado */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-beige-200 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-oliva-400 rounded-full hover:bg-oliva-500;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #889E81 #F5F5DC;
+  }
+}
+
+/* Componentes base */
+@layer components {
+  /* Botones */
+  .btn {
+    @apply inline-flex items-center justify-center font-medium rounded-button 
+           transition-all duration-200 active:scale-95 disabled:opacity-50 
+           disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-primary {
+    @apply btn bg-oliva-400 text-white hover:bg-oliva-500 
+           shadow-sm hover:shadow-md px-4 py-2;
+  }
+
+  .btn-secondary {
+    @apply btn bg-beige-200 text-cafe-800 hover:bg-beige-300 
+           border border-cafe-200 px-4 py-2;
+  }
+
+  .btn-danger {
+    @apply btn bg-terracota-500 text-white hover:bg-terracota-600 
+           shadow-sm hover:shadow-md px-4 py-2;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-cafe-700 hover:bg-beige-200 px-4 py-2;
+  }
+
+  .btn-touch {
+    @apply btn min-h-touch min-w-touch text-touch;
+  }
+
+  .btn-touch-lg {
+    @apply btn min-h-touch-lg min-w-touch-lg text-touch-lg;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-card shadow-card p-4;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-card-hover transition-shadow duration-200 cursor-pointer;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full px-4 py-3 bg-white border border-beige-300 rounded-button 
+           text-cafe-900 placeholder-cafe-400 
+           focus:outline-none focus:ring-2 focus:ring-oliva-400 focus:border-transparent
+           transition-all duration-200;
+  }
+
+  .input-error {
+    @apply input border-terracota-500 focus:ring-terracota-400;
+  }
+
+  /* Labels */
+  .label {
+    @apply block text-sm font-medium text-cafe-700 mb-1;
+  }
+
+  /* Estados de mesa */
+  .mesa-disponible {
+    @apply bg-estado-disponible/20 border-2 border-estado-disponible text-estado-disponible;
+  }
+
+  .mesa-ocupada {
+    @apply bg-estado-ocupada/20 border-2 border-estado-ocupada text-estado-ocupada;
+  }
+
+  .mesa-reservada {
+    @apply bg-estado-reservada/20 border-2 border-estado-reservada text-estado-reservada;
+  }
+
+  .mesa-cuenta {
+    @apply bg-estado-cuenta/20 border-2 border-estado-cuenta text-estado-cuenta;
+  }
+
+  /* Estados de cocina */
+  .estado-pendiente {
+    @apply bg-estado-pendiente text-cafe-900;
+  }
+
+  .estado-preparando {
+    @apply bg-estado-preparando text-white;
+  }
+
+  .estado-listo {
+    @apply bg-estado-listo text-white;
+  }
+
+  .estado-entregado {
+    @apply bg-estado-entregado text-white;
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-cafe-900/50 backdrop-blur-sm z-50 
+           flex items-center justify-center p-4;
+  }
+
+  .modal-content {
+    @apply bg-white rounded-card shadow-modal w-full max-w-lg max-h-[90vh] 
+           overflow-y-auto animate-slide-in;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    @apply fixed left-0 top-0 h-full w-64 bg-cafe-800 text-white 
+           shadow-lg z-40 overflow-y-auto;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 text-beige-200 
+           hover:bg-cafe-700 hover:text-white transition-colors duration-200;
+  }
+
+  .sidebar-link-active {
+    @apply sidebar-link bg-oliva-400 text-white hover:bg-oliva-500;
+  }
+
+  /* Header */
+  .header {
+    @apply sticky top-0 z-30 bg-white/95 backdrop-blur-sm 
+           border-b border-beige-200 px-4 py-3;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-estado-disponible/20 text-green-700;
+  }
+
+  .badge-warning {
+    @apply badge bg-estado-ocupada/20 text-yellow-700;
+  }
+
+  .badge-danger {
+    @apply badge bg-estado-cuenta/20 text-red-700;
+  }
+
+  .badge-info {
+    @apply badge bg-estado-reservada/20 text-blue-700;
+  }
+
+  /* Table */
+  .table {
+    @apply w-full border-collapse;
+  }
+
+  .table th {
+    @apply bg-beige-100 px-4 py-3 text-left text-sm font-semibold text-cafe-700 
+           border-b border-beige-300;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-b border-beige-200 text-cafe-800;
+  }
+
+  .table tbody tr:hover {
+    @apply bg-beige-50;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply w-8 h-8 border-4 border-oliva-200 border-t-oliva-500 
+           rounded-full animate-spin;
+  }
+
+  /* Touch target */
+  .touch-target {
+    @apply min-h-touch min-w-touch flex items-center justify-center;
+  }
+}
+
+/* Utilidades adicionales */
+@layer utilities {
+  /* Para ocultar scrollbar pero mantener funcionalidad */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe area para notch en móviles */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Texto truncado con líneas */
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Grid responsivo para productos */
+  .grid-productos {
+    @apply grid grid-cols-2 tablet:grid-cols-3 tablet-lg:grid-cols-4 gap-3;
+  }
+
+  /* Grid responsivo para mesas */
+  .grid-mesas {
+    @apply grid grid-cols-3 tablet:grid-cols-4 tablet-lg:grid-cols-5 desktop:grid-cols-6 gap-3;
+  }
+
+  /* Grid para cocina */
+  .grid-cocina {
+    @apply grid grid-cols-1 tablet:grid-cols-2 cocina:grid-cols-3 gap-4;
+  }
+}
+
+/* Print styles */
+@media print {
+  body {
+    @apply bg-white text-black;
+    margin: 0;
+    padding: 0;
+  }
+
+  .no-print,
+  .modal-overlay {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Documento de ingreso imprimible */
+  .print-document {
+    display: block !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 99999;
+    background: white;
+    padding: 20px;
+  }
+
+  .print-document * {
+    visibility: visible !important;
+  }
+
+  /* Ocultar todo excepto el documento de impresion */
+  body > *:not(.print-root) {
+    display: none !important;
+  }
+}

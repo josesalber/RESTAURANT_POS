@@ -22,9 +22,10 @@ const ESTADOS = [
 
 const getEstadoInfo = (estado) => ESTADOS.find(e => e.value === estado) || ESTADOS[0];
 
-const { socket, isConnected } = useSocket();
-
 export default function CajaReservas() {
+
+  const { socket, isConnected } = useSocket();
+  
   const {
     reservasHoy, isLoading,
     fetchReservasHoy, cambiarEstadoReserva,

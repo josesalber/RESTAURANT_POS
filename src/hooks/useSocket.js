@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { socketService } from '@services/socket';
+// hooks/useSocket.js
+import { useState, useEffect } from 'react';
+import socketService from '@services/socket';
 import { useAuthStore } from '@store/authStore';
 
 export const useSocket = () => {
@@ -65,8 +66,8 @@ export const useSocket = () => {
     isConnected,
     connect: () => socketService.connect(),
     disconnect: () => socketService.disconnect(),
-    emit,      // <-- AGREGADO
-    on,        // <-- AGREGADO
-    off,       // <-- AGREGADO
+    emit,
+    on,
+    off,
   };
 };

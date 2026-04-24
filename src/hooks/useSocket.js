@@ -31,10 +31,42 @@ export const useSocket = () => {
     };
   }, [token, user, isInitialized]);
 
+  // Función para emitir eventos
+  const emit = (event, data) => {
+    if (socketService.socket && socketService.connected) {
+      console.log(`📤 Emitiendo evento: ${event}`, data);
+      socketService.socket.emit(event, data);
+      return true;
+    } else {
+      console.warn(`⚠️ No se pudo emitir ${event}: socket no conectado`);
+      return false;
+    }
+  };
+
+  // Función para suscribirse a eventos
+  const on = (event, callback) => {
+    if (socketService.socket) {
+      socketService.socket.on(event, callback);
+      console.log(`📡 Suscrito a evento: ${event}`);
+      return () => socketService.socket?.off(event, callback);
+    }
+    return () => {};
+  };
+
+  // Función para desuscribirse
+  const off = (event, callback) => {
+    if (socketService.socket) {
+      socketService.socket.off(event, callback);
+    }
+  };
+
   return {
     socket,
     isConnected,
     connect: () => socketService.connect(),
     disconnect: () => socketService.disconnect(),
+    emit,      // <-- AGREGADO
+    on,        // <-- AGREGADO
+    off,       // <-- AGREGADO
   };
 };

@@ -1,145 +1,69 @@
+// services/socket.js
 import { io } from 'socket.io-client';
-import { useAuthStore } from '@store/authStore';
-import { useMesasStore } from '@store/mesasStore';
-import { usePedidosStore } from '@store/pedidosStore';
-import { useCocinaStore } from '@store/cocinaStore';
-import { useCajaStore } from '@store/cajaStore';
-import { useReservasStore } from '@store/reservasStore';
-import toast from 'react-hot-toast';
-
-// ✅ SOLO backend (Render)
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
-
-if (!SOCKET_URL) {
-  console.error('❌ VITE_SOCKET_URL no está definida');
-}
 
 class SocketService {
   constructor() {
     this.socket = null;
     this.connected = false;
     this.listeners = new Map();
-    this.listenersConfigured = false;
-    this.connectionAttempts = 0;
-    this.maxConnectionAttempts = 3;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
   }
 
   connect() {
-    const token = useAuthStore.getState().token;
-    const user = useAuthStore.getState().user;
-
-    if (!token || !user) {
-      console.warn('No se puede conectar socket sin autenticación');
-      return;
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      console.error('❌ No token available for WebSocket connection');
+      return false;
     }
 
-    // Evitar reconexiones innecesarias
-    if (this.socket?.connected && this.listenersConfigured) {
-      return;
+    if (this.socket && this.connected) {
+      console.log('🔌 WebSocket already connected');
+      return true;
     }
 
-    if (this.socket && !this.socket.connected) {
-      this.socket.disconnect();
-      this.socket = null;
-      this.listenersConfigured = false;
-    }
-
-    this.socket = io(SOCKET_URL, {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    
+    console.log('🔌 Connecting to WebSocket:', API_URL);
+    
+    this.socket = io(API_URL, {
       auth: { token },
-      transports: ['websocket'], // 🔥 importante
+      transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
-    console.log('🔌 Conectando socket a:', SOCKET_URL);
-
-    this.setupListeners();
-  }
-
-  setupListeners() {
-    if (!this.socket || this.listenersConfigured) return;
-    this.listenersConfigured = true;
-
     this.socket.on('connect', () => {
-      console.log('✅ Socket conectado:', this.socket.id);
+      console.log('✅ WebSocket connected');
       this.connected = true;
-      this.connectionAttempts = 0;
+      this.reconnectAttempts = 0;
+      
+      // Emitir evento de conexión para registrar sesión
+      this.socket.emit('connection:registered', { timestamp: Date.now() });
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('❌ Socket desconectado:', reason);
+      console.log('❌ WebSocket disconnected:', reason);
       this.connected = false;
     });
 
     this.socket.on('connect_error', (error) => {
-      this.connectionAttempts++;
-      console.error(
-        `Error socket (${this.connectionAttempts}/${this.maxConnectionAttempts}):`,
-        error.message
-      );
-
-      if (this.connectionAttempts >= this.maxConnectionAttempts) {
-        this.socket.disconnect();
+      console.error('❌ WebSocket connection error:', error.message);
+      this.reconnectAttempts++;
+      
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('❌ Max reconnection attempts reached');
       }
     });
 
-    // === MESAS ===
-    this.socket.on('mesa:updated', (mesa) => {
-      useMesasStore.getState().updateMesaFromSocket(mesa);
+    this.socket.on('error', (error) => {
+      console.error('❌ WebSocket error:', error);
     });
 
-    this.socket.on('mesa:estadoCambiado', (mesa) => {
-      useMesasStore.getState().updateMesaFromSocket(mesa);
-    });
-
-    // === PEDIDOS ===
-    this.socket.on('pedido:nuevo', (pedido) => {
-      const user = useAuthStore.getState().user;
-
-      if (user?.rol === 'Cocina') {
-        useCocinaStore.getState().fetchComandas();
-        toast.success(`Nuevo pedido - Mesa ${pedido.mesa_numero}`, { icon: '🍳' });
-      } else {
-        usePedidosStore.getState().fetchPedidosActivos();
-      }
-    });
-
-    this.socket.on('pedido:actualizado', () => {
-      usePedidosStore.getState().fetchPedidosActivos();
-      useCocinaStore.getState().fetchComandas();
-    });
-
-    // === COCINA ===
-    this.socket.on('cocina:itemListo', (data) => {
-      const user = useAuthStore.getState().user;
-
-      if (user?.rol === 'Mesero') {
-        toast.success(`Listo: ${data.productoNombre}`, { icon: '🔔' });
-        usePedidosStore.getState().fetchPedidosActivos();
-      }
-    });
-
-    // === PAGOS ===
-    this.socket.on('pago:procesado', (data) => {
-      usePedidosStore.getState().updatePedidoFromSocket(data.pedido);
-      useMesasStore.getState().fetchMesas();
-    });
-
-    // === RESERVAS ===
-    this.socket.on('reserva:created', (data) => {
-      useReservasStore.getState().addReservaFromSocket(data);
-    });
-
-    // === WHATSAPP ===
-    this.socket.on('whatsapp:qr', (data) => {
-      useReservasStore.getState().setWhatsappQR(data.qr);
-    });
-  }
-
-  emit(event, data) {
-    if (!this.socket?.connected) return false;
-    this.socket.emit(event, data);
     return true;
   }
 
@@ -148,15 +72,51 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.connected = false;
-      this.listeners.clear();
+      console.log('🔌 WebSocket disconnected');
     }
   }
 
-  isConnected() {
-    return this.socket?.connected || false;
+  emit(event, data) {
+    if (this.socket && this.connected) {
+      console.log(`📤 Emitting ${event}:`, data);
+      this.socket.emit(event, data);
+      return true;
+    } else {
+      console.warn(`⚠️ Cannot emit ${event}: socket not connected`);
+      return false;
+    }
+  }
+
+  on(event, callback) {
+    if (this.socket) {
+      if (!this.listeners.has(event)) {
+        this.listeners.set(event, new Set());
+      }
+      this.listeners.get(event).add(callback);
+      this.socket.on(event, callback);
+      console.log(`📡 Listening to ${event}`);
+    }
+  }
+
+  off(event, callback) {
+    if (this.socket) {
+      if (callback) {
+        this.socket.off(event, callback);
+        this.listeners.get(event)?.delete(callback);
+      } else {
+        this.socket.off(event);
+        this.listeners.delete(event);
+      }
+    }
+  }
+
+  getConnectionStatus() {
+    return {
+      connected: this.connected,
+      socketId: this.socket?.id,
+      reconnectAttempts: this.reconnectAttempts
+    };
   }
 }
 
-const socketService = new SocketService();
-export { socketService };
-export default socketService;
+export const socketService = new SocketService();

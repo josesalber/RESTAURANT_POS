@@ -23,7 +23,7 @@ class SocketService {
       return true;
     }
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
     
     console.log('🔌 Connecting to WebSocket:', API_URL);
     
@@ -42,7 +42,6 @@ class SocketService {
       this.connected = true;
       this.reconnectAttempts = 0;
       
-      // Emitir evento de conexión para registrar sesión
       this.socket.emit('connection:registered', { timestamp: Date.now() });
     });
 
@@ -119,4 +118,9 @@ class SocketService {
   }
 }
 
-export const socketService = new SocketService();
+// Crear instancia única
+const socketService = new SocketService();
+
+// Exportar como default y también como named export
+export default socketService;
+export { socketService };

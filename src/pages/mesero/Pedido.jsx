@@ -4,6 +4,7 @@ import { useMesasStore } from '@store/mesasStore';
 import { usePedidosStore } from '@store/pedidosStore';
 import { useProductosStore } from '@store/productosStore';
 import { useCocinaStore } from '@store/cocinaStore';
+import { useSocket } from '@hooks/useSocket';
 import { formatCurrency } from '@utils/format';
 import { handleApiError } from '@utils';
 import toast from 'react-hot-toast';
@@ -24,6 +25,8 @@ import {
   FiLoader,
   FiChevronLeft,
   FiChevronRight,
+  FiWifi,
+  FiWifiOff,
 } from 'react-icons/fi';
 
 export default function MeseroPedido() {
@@ -44,6 +47,7 @@ export default function MeseroPedido() {
   const { menu, fetchMenu, categoriaSeleccionada, setCategoriaSeleccionada } =
     useProductosStore();
   const { cambiarEstadoItem } = useCocinaStore();
+  const { socket, isConnected, on, off, emit } = useSocket();
 
   // Determinar si es un pedido de delivery (sin mesaId)
   const isDelivery = !mesaId;
@@ -71,6 +75,107 @@ export default function MeseroPedido() {
     console.log('MeseroPedido - Fetching pedidos activos');
     await fetchPedidosActivos();
     console.log('MeseroPedido - loadData completed');
+  };
+
+  // ESCUCHAR EVENTOS WEBSOCKET DE COCINA
+  useEffect(() => {
+    if (!socket) return;
+
+    // Cuando un item está listo en cocina
+    const handleItemListo = (data) => {
+      console.log('🍳 MESERO - Item listo recibido de cocina:', data);
+      
+      // Mostrar notificación destacada
+      toast.success(
+        (t) => (
+          <div className="flex flex-col">
+            <span className="font-bold text-lg">✅ ¡ITEM LISTO!</span>
+            <span className="text-base">{data.producto_nombre}</span>
+            <span className="text-sm text-green-200">Mesa {data.mesa_numero}</span>
+          </div>
+        ),
+        {
+          duration: 8000,
+          icon: '🍳',
+          style: {
+            background: '#22c55e',
+            color: 'white',
+            fontWeight: 'bold',
+          }
+        }
+      );
+
+      // Recargar el detalle del pedido si es el pedido actual
+      if (pedidoMesa && data.pedidoId === pedidoMesa.id) {
+        refreshPedidoDetalle(pedidoMesa.id);
+      } else {
+        // Si no es el pedido actual, solo recargar la lista
+        fetchPedidosActivos();
+      }
+    };
+
+    // Cuando cambia el estado de un item
+    const handleEstadoCambiado = (data) => {
+      console.log('🔄 MESERO - Estado cambiado recibido de cocina:', data);
+      
+      if (data.estado === 'listo') {
+        toast.info(`${data.producto_nombre} está listo`, {
+          duration: 4000,
+          icon: '🍳'
+        });
+      }
+
+      // Recargar detalle si es el pedido actual
+      if (pedidoMesa && data.pedidoId === pedidoMesa.id) {
+        refreshPedidoDetalle(pedidoMesa.id);
+      } else {
+        fetchPedidosActivos();
+      }
+    };
+
+    // Cuando un pedido se completa (último item)
+    const handlePedidoCompleto = (data) => {
+      console.log('🎉 MESERO - Pedido completo recibido de cocina:', data);
+      
+      toast.success(
+        `🎉 ¡Pedido de Mesa ${data.mesa_numero} completado! Todos los platillos están listos`,
+        {
+          duration: 10000,
+          icon: '🎉',
+          style: {
+            background: '#3b82f6',
+            color: 'white',
+            fontWeight: 'bold',
+          }
+        }
+      );
+
+      // Recargar el pedido para actualizar el estado a 'listo'
+      if (pedidoMesa && data.pedidoId === pedidoMesa.id) {
+        refreshPedidoDetalle(pedidoMesa.id);
+      }
+      fetchPedidosActivos();
+    };
+
+    // Registrar listeners
+    on('cocina:itemListo', handleItemListo);
+    on('cocina:estadoCambiado', handleEstadoCambiado);
+    on('cocina:pedidoCompleto', handlePedidoCompleto);
+
+    return () => {
+      off('cocina:itemListo', handleItemListo);
+      off('cocina:estadoCambiado', handleEstadoCambiado);
+      off('cocina:pedidoCompleto', handlePedidoCompleto);
+    };
+  }, [socket, on, off, pedidoMesa]);
+
+  // Función para refrescar el detalle del pedido
+  const refreshPedidoDetalle = async (pedidoId) => {
+    console.log(`🔄 Refrescando detalle del pedido ${pedidoId}`);
+    const detalleActualizado = await fetchPedido(pedidoId);
+    if (detalleActualizado) {
+      setPedidoDetalle(detalleActualizado);
+    }
   };
 
   useEffect(() => {
@@ -194,7 +299,7 @@ export default function MeseroPedido() {
 
   const scrollCategorias = (direction) => {
     if (categoriasScrollRef) {
-      const scrollAmount = 200; // Cantidad de píxeles a desplazar
+      const scrollAmount = 200;
       const newScrollLeft = categoriasScrollRef.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount);
       categoriasScrollRef.scrollTo({
         left: newScrollLeft,
@@ -225,14 +330,11 @@ export default function MeseroPedido() {
         if (result.success) {
           toast.success('Items agregados al pedido');
           setCarrito([]);
-          // Recargar el detalle del pedido actualizado
           const detalleActualizado = await fetchPedido(pedidoMesa.id);
           if (detalleActualizado) {
             setPedidoDetalle(detalleActualizado);
           }
-          // Volver a la vista del pedido existente
           setMostrarPedidoExistente(true);
-          // Recargar pedidos activos para actualizar totales
           await fetchPedidosActivos();
         } else {
           toast.error(result.message);
@@ -249,10 +351,8 @@ export default function MeseroPedido() {
           toast.success(isDelivery ? 'Pedido de delivery enviado a cocina' : 'Pedido enviado a cocina');
           setCarrito([]);
           if (!isDelivery) {
-            // Actualizar estado de mesa solo si no es delivery
             await cambiarEstado(mesaActual.id, 'ocupada');
           }
-          // El pedido creado se convierte en el pedido activo
           setPedidoMesa(result.data);
           setPedidoDetalle(result.data);
           setMostrarPedidoExistente(true);
@@ -276,41 +376,10 @@ export default function MeseroPedido() {
     const result = await solicitarCuenta(pedidoMesa.id);
     if (result.success) {
       toast.success('Cuenta solicitada');
-      // Actualizar el pedido local
       setPedidoMesa({ ...pedidoMesa, estado: 'cuenta' });
       await fetchPedidosActivos();
     } else {
       toast.error(result.message);
-    }
-  };
-
-  const handleItemClick = async (item) => {
-    if (!pedidoMesa) {
-      toast.error('No hay pedido activo');
-      return;
-    }
-
-    // Solo permitir cambiar de pendiente a listo
-    if (item.estado !== 'pendiente') {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await cambiarEstadoItem(item.id, 'listo');
-      if (result.success) {
-        toast.success(`${item.producto_nombre} marcado como listo`);
-        // Refrescar el detalle del pedido
-        const detalleActualizado = await fetchPedido(pedidoMesa.id);
-        setPedidoDetalle(detalleActualizado);
-        await fetchPedidosActivos();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -320,13 +389,9 @@ export default function MeseroPedido() {
       return;
     }
 
-    // Cambiar el estado del pedido a 'entregado' (NO a 'pagado')
-    // La mesa solo se libera cuando el pedido se paga en caja
     const result = await cambiarEstadoPedido(pedidoMesa.id, 'entregado');
     if (result.success) {
       toast.success('Pedido entregado - Esperando pago en caja');
-      // NO liberar la mesa aquí - se libera automáticamente cuando se paga
-      // Regresar al mapa de mesas
       navigate('/mesero/mesas');
     } else {
       toast.error(result.message);
@@ -343,7 +408,7 @@ export default function MeseroPedido() {
 
   return (
     <div className="flex flex-col h-full -m-4">
-      {/* Header */}
+      {/* Header con indicador WebSocket */}
       <div className="bg-white px-4 py-3 border-b border-beige-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -362,6 +427,21 @@ export default function MeseroPedido() {
           </div>
         </div>
 
+        {/* Indicador WebSocket */}
+        <div className="flex items-center gap-2 bg-beige-100 rounded-full px-3 py-1">
+          {isConnected ? (
+            <>
+              <FiWifi className="text-green-500 w-4 h-4" />
+              <span className="text-xs text-green-600">Tiempo Real</span>
+            </>
+          ) : (
+            <>
+              <FiWifiOff className="text-red-500 w-4 h-4" />
+              <span className="text-xs text-red-600">Reconectando...</span>
+            </>
+          )}
+        </div>
+
         {pedidoMesa && pedidoMesa.estado === 'listo' && (
           <button
             onClick={handleSolicitarCuenta}
@@ -373,22 +453,20 @@ export default function MeseroPedido() {
         )}
       </div>
 
+      {/* Resto del componente igual... */}
       <div className="flex-1 flex overflow-hidden">
         {/* Panel izquierdo: Categorías y productos */}
         <div className="flex-1 flex flex-col overflow-hidden bg-beige-50">
           {/* Categorías */}
           <div className="p-3 bg-white border-b border-beige-200">
             <div className="flex items-center gap-2">
-              {/* Botón flecha izquierda */}
               <button
                 onClick={() => scrollCategorias('left')}
                 className="btn-touch bg-beige-200 hover:bg-beige-300 rounded-button flex-shrink-0"
-                aria-label="Desplazar categorías a la izquierda"
               >
                 <FiChevronLeft className="w-4 h-4" />
               </button>
 
-              {/* Contenedor de categorías con scroll */}
               <div
                 ref={setCategoriasScrollRef}
                 className="flex gap-2 overflow-x-auto scrollbar-hide flex-1"
@@ -410,11 +488,9 @@ export default function MeseroPedido() {
                 ))}
               </div>
 
-              {/* Botón flecha derecha */}
               <button
                 onClick={() => scrollCategorias('right')}
                 className="btn-touch bg-beige-200 hover:bg-beige-300 rounded-button flex-shrink-0"
-                aria-label="Desplazar categorías a la derecha"
               >
                 <FiChevronRight className="w-4 h-4" />
               </button>
@@ -508,20 +584,19 @@ export default function MeseroPedido() {
           {/* Contenido: Pedido existente o Carrito nuevo */}
           <div className="flex-1 overflow-auto p-4">
             {pedidoMesa && mostrarPedidoExistente ? (
-              // Mostrar items del pedido existente
               <div>
                 {pedidoDetalle?.detalle && pedidoDetalle.detalle.length > 0 ? (
                   <div className="space-y-3">
                     {pedidoDetalle.detalle.map((item) => (
                       <div
                         key={item.id}
-                        onClick={() => handleItemClick(item)}
                         className={clsx(
-                          "rounded-button p-3 transition-all cursor-pointer",
+                          "rounded-button p-3 transition-all",
                           item.estado === 'pendiente' 
-                            ? "bg-yellow-50 hover:bg-yellow-100 border-2 border-yellow-200 hover:border-yellow-300" 
-                            : "bg-beige-50",
-                          isLoading && "opacity-50 cursor-wait"
+                            ? "bg-yellow-50 border-2 border-yellow-200" 
+                            : item.estado === 'listo'
+                            ? "bg-green-50 border-2 border-green-200"
+                            : "bg-beige-50"
                         )}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -530,11 +605,11 @@ export default function MeseroPedido() {
                               {getEstadoIcon(item.estado)}
                               <h4 className={clsx(
                                 "font-medium line-clamp-1",
-                                item.estado === 'pendiente' ? "text-cafe-800" : "text-cafe-600"
+                                item.estado === 'pendiente' ? "text-cafe-800" : 
+                                item.estado === 'listo' ? "text-green-700" : "text-cafe-600"
                               )}>
                                 {item.producto_nombre}
                               </h4>
-                              
                             </div>
                             <p className="text-sm text-cafe-500 ml-6">
                               {item.cantidad} x {formatCurrency(parseFloat(item.precio_unitario))}
@@ -544,8 +619,12 @@ export default function MeseroPedido() {
                                 {item.notas}
                               </p>
                             )}
-                            <p className="text-xs text-cafe-400 ml-6 mt-1">
-                              {getEstadoLabel(item.estado)}
+                            <p className="text-xs ml-6 mt-1">
+                              {item.estado === 'listo' ? (
+                                <span className="text-green-600 font-medium">✅ Listo para servir</span>
+                              ) : (
+                                <span className="text-cafe-400">{getEstadoLabel(item.estado)}</span>
+                              )}
                             </p>
                           </div>
                           <div className="text-right">
@@ -563,7 +642,6 @@ export default function MeseroPedido() {
                   </div>
                 )}
 
-                {/* Resumen del pedido existente */}
                 {pedidoDetalle && (
                   <div className="mt-4 pt-4 border-t border-beige-200 space-y-2">
                     <div className="flex justify-between text-sm text-cafe-600">
@@ -578,7 +656,6 @@ export default function MeseroPedido() {
                 )}
               </div>
             ) : (
-              // Carrito para nuevo pedido o agregar items
               carrito.length === 0 ? (
                 <div className="text-center py-8 text-cafe-400">
                   <FiPlus className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -588,10 +665,7 @@ export default function MeseroPedido() {
               ) : (
                 <div className="space-y-3">
                   {carrito.map((item) => (
-                    <div
-                      key={item.producto_id}
-                      className="bg-beige-50 rounded-button p-3"
-                    >
+                    <div key={item.producto_id} className="bg-beige-50 rounded-button p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-cafe-800 line-clamp-1">
@@ -606,7 +680,6 @@ export default function MeseroPedido() {
                             </p>
                           )}
                         </div>
-
                         <div className="text-right">
                           <p className="font-bold text-cafe-800">
                             {formatCurrency(item.precio * item.cantidad)}
@@ -614,7 +687,6 @@ export default function MeseroPedido() {
                         </div>
                       </div>
 
-                      {/* Controles */}
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-2">
                           <button
@@ -633,12 +705,10 @@ export default function MeseroPedido() {
                             <FiPlus className="w-4 h-4" />
                           </button>
                         </div>
-
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleNotaItem(item)}
                             className="w-8 h-8 bg-beige-200 rounded-full flex items-center justify-center hover:bg-beige-300"
-                            title="Agregar nota"
                           >
                             <FiEdit3 className="w-4 h-4" />
                           </button>
@@ -657,10 +727,9 @@ export default function MeseroPedido() {
             )}
           </div>
 
-          {/* Footer con total y botones */}
+          {/* Footer */}
           <div className="p-4 border-t border-beige-200 bg-beige-50">
             {pedidoMesa && mostrarPedidoExistente ? (
-              // Botones para pedido existente
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-lg">
                   <span className="text-cafe-600">Total cuenta:</span>
@@ -669,26 +738,24 @@ export default function MeseroPedido() {
                   </span>
                 </div>
                 
-                {/* Mostrar estado actual del pedido */}
                 {pedidoMesa.estado === 'listo' && (
                   <div className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-center font-medium">
-                    Todos los platillos listos
+                    🍳 Todos los platillos listos
                   </div>
                 )}
                 
                 {pedidoMesa.estado === 'cuenta' && (
                   <div className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-center font-medium">
-                    Cuenta solicitada - Esperando pago
+                    💰 Cuenta solicitada - Esperando pago
                   </div>
                 )}
 
                 {pedidoMesa.estado === 'entregado' && (
                   <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-center font-medium">
-                    Pedido entregado - Pendiente de cobro en caja
+                    📦 Pedido entregado - Pendiente de cobro en caja
                   </div>
                 )}
 
-                {/* Botones según estado */}
                 {pedidoMesa.estado !== 'cuenta' && pedidoMesa.estado !== 'entregado' && (
                   <>
                     <button
@@ -725,7 +792,6 @@ export default function MeseroPedido() {
                 )}
               </div>
             ) : (
-              // Botón para enviar carrito
               <>
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-cafe-600">
